@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OME-Zarr Connection Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      .test-result {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 4px;
+      }
+      .success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+      }
+      .error {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+      }
+      .info {
+        background-color: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+      }
+      button {
+        padding: 10px 20px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      pre {
+        background-color: #f4f4f4;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin: 10px 0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OME-Zarr Connection Diagnostics</h1>
+
+    <div>
+      <label for="zarrUrl">OME-Zarr URL:</label>
+      <input type="text" id="zarrUrl" value="http://localhost:8080/zarr/mosaic.ome.zarr" />
+      <button onclick="runTests()">Run Tests</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+      async function runTests() {
+        const resultsDiv = document.getElementById('results')
+        resultsDiv.innerHTML = '<h2>Running tests...</h2>'
+
+        const zarrUrl = document.getElementById('zarrUrl').value
+        const results = []
+
+        // Test 1: Check .zattrs accessibility
+        results.push(await testZattrs(zarrUrl))
+
+        // Test 2: Check .zgroup accessibility
+        results.push(await testZgroup(zarrUrl))
+
+        // Test 3: Check first resolution level
+        results.push(await testResolutionLevel(zarrUrl, '0'))
+
+        // Test 4: Check CORS headers
+        results.push(await testCORS(zarrUrl))
+
+        displayResults(results)
+      }
+
+      async function testZattrs(zarrUrl) {
+        const url = `${zarrUrl}/.zattrs`
+        try {
+          console.log('Testing:', url)
+          const response = await fetch(url)
+
+          if (!response.ok) {
+            return {
+              test: 'Metadata (.zattrs)',
+              status: 'error',
+              message: `HTTP ${response.status}: ${response.statusText}`,
+              details: 'Cannot access .zattrs file. Check if nginx is serving the file correctly.',
+            }
+          }
+
+          const data = await response.json()
+          return {
+            test: 'Metadata (.zattrs)',
+            status: 'success',
+            message: 'Successfully loaded .zattrs',
+            details: JSON.stringify(data, null, 2),
+          }
+        } catch (error) {
+          return {
+            test: 'Metadata (.zattrs)',
+            status: 'error',
+            message: error.message,
+            details: 'Possible CORS issue or network error. Check browser console for details.',
+          }
+        }
+      }
+
+      async function testZgroup(zarrUrl) {
+        const url = `${zarrUrl}/.zgroup`
+        try {
+          console.log('Testing:', url)
+          const response = await fetch(url)
+
+          if (!response.ok) {
+            return {
+              test: 'Group metadata (.zgroup)',
+              status: 'error',
+              message: `HTTP ${response.status}: ${response.statusText}`,
+              details: '.zgroup file not found or inaccessible',
+            }
+          }
+
+          const data = await response.json()
+          return {
+            test: 'Group metadata (.zgroup)',
+            status: 'success',
+            message: 'Successfully loaded .zgroup',
+            details: JSON.stringify(data, null, 2),
+          }
+        } catch (error) {
+          return {
+            test: 'Group metadata (.zgroup)',
+            status: 'error',
+            message: error.message,
+            details: error.toString(),
+          }
+        }
+      }
+
+      async function testResolutionLevel(zarrUrl, level) {
+        const zarrayUrl = `${zarrUrl}/${level}/.zarray`
+        try {
+          console.log('Testing:', zarrayUrl)
+          const response = await fetch(zarrayUrl)
+
+          if (!response.ok) {
+            return {
+              test: `Resolution level ${level} (.zarray)`,
+              status: 'error',
+              message: `HTTP ${response.status}: ${response.statusText}`,
+              details: `Cannot access level ${level}/.zarray`,
+            }
+          }
+
+          const data = await response.json()
+
+          // Try to fetch a sample chunk
+          const chunkUrl = `${zarrUrl}/${level}/0.0.0`
+          const chunkResponse = await fetch(chunkUrl)
+
+          return {
+            test: `Resolution level ${level}`,
+            status: 'success',
+            message: `Level ${level} accessible, chunk 0.0.0: ${chunkResponse.ok ? 'OK' : 'FAILED'}`,
+            details: JSON.stringify(data, null, 2),
+          }
+        } catch (error) {
+          return {
+            test: `Resolution level ${level}`,
+            status: 'error',
+            message: error.message,
+            details: error.toString(),
+          }
+        }
+      }
+
+      async function testCORS(zarrUrl) {
+        try {
+          const url = `${zarrUrl}/.zattrs`
+          const response = await fetch(url)
+          const corsHeader = response.headers.get('Access-Control-Allow-Origin')
+
+          return {
+            test: 'CORS Configuration',
+            status: corsHeader ? 'success' : 'error',
+            message: corsHeader ? `CORS enabled: ${corsHeader}` : 'CORS header not found',
+            details: `Access-Control-Allow-Origin: ${corsHeader || 'NOT SET'}\n\nIf this is missing, add to nginx config:\nadd_header Access-Control-Allow-Origin *;\nadd_header Access-Control-Allow-Methods 'GET, OPTIONS';\nadd_header Access-Control-Allow-Headers 'Range';`,
+          }
+        } catch (error) {
+          return {
+            test: 'CORS Configuration',
+            status: 'error',
+            message: 'Cannot check CORS',
+            details: error.toString(),
+          }
+        }
+      }
+
+      function displayResults(results) {
+        const resultsDiv = document.getElementById('results')
+        resultsDiv.innerHTML = '<h2>Test Results</h2>'
+
+        results.forEach((result) => {
+          const div = document.createElement('div')
+          div.className = `test-result ${result.status}`
+          div.innerHTML = `
+                    <h3>${result.test}</h3>
+                    <p><strong>${result.message}</strong></p>
+                    ${result.details ? `<pre>${result.details}</pre>` : ''}
+                `
+          resultsDiv.appendChild(div)
+        })
+      }
+
+      // Auto-run on load
+      window.addEventListener('load', () => {
+        // Don't auto-run, let user click button
+      })
+    </script>
+  </body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+  <head>
+    <title>OME-Zarr Basic Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/openseadragon@5.0/build/openseadragon/openseadragon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/zarr@0.7.3/dist/zarr-core.umd.production.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      #viewer {
+        width: 800px;
+        height: 600px;
+        border: 2px solid #ccc;
+      }
+      #log {
+        margin-top: 20px;
+        padding: 10px;
+        background: #f5f5f5;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        margin: 3px 0;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .log-error {
+        color: red;
+      }
+      .log-success {
+        color: green;
+      }
+      .log-info {
+        color: blue;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OME-Zarr OpenSeadragon Basic Test</h1>
+    <button onclick="startTest()">Load Image</button>
+    <div id="viewer"></div>
+    <div id="log"></div>
+
+    <script>
+      const zarrUrl = 'http://localhost:8080/zarr/mosaic.ome.zarr'
+
+      function log(message, type = 'info') {
+        const logDiv = document.getElementById('log')
+        const entry = document.createElement('div')
+        entry.className = `log-entry log-${type}`
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`
+        logDiv.appendChild(entry)
+        logDiv.scrollTop = logDiv.scrollHeight
+        console.log(message)
+      }
+
+      async function testBasicFetch() {
+        log('Testing basic fetch...', 'info')
+        try {
+          const response = await fetch(`${zarrUrl}/.zattrs`)
+          if (!response.ok) {
+            log(`Failed to fetch .zattrs: ${response.status}`, 'error')
+            return null
+          }
+          const metadata = await response.json()
+          log(`Successfully loaded metadata`, 'success')
+          log(`Found ${metadata.multiscales[0].datasets.length} resolution levels`, 'info')
+          return metadata
+        } catch (error) {
+          log(`Error: ${error.message}`, 'error')
+          return null
+        }
+      }
+
+      async function testChunkFetch() {
+        log('Testing chunk fetch...', 'info')
+        try {
+          const response = await fetch(`${zarrUrl}/0/0.0.0`)
+          if (!response.ok) {
+            log(`Failed to fetch chunk 0.0.0: ${response.status}`, 'error')
+            return null
+          }
+          const arrayBuffer = await response.arrayBuffer()
+          log(`Successfully loaded chunk 0.0.0 (${arrayBuffer.byteLength} bytes)`, 'success')
+          return arrayBuffer
+        } catch (error) {
+          log(`Error fetching chunk: ${error.message}`, 'error')
+          return null
+        }
+      }
+
+      async function startTest() {
+        log('=== Starting OME-Zarr Test ===', 'info')
+
+        // Test 1: Basic connectivity
+        const metadata = await testBasicFetch()
+        if (!metadata) {
+          log('Cannot proceed - metadata load failed', 'error')
+          return
+        }
+
+        // Test 2: Chunk access
+        const chunkData = await testChunkFetch()
+        if (!chunkData) {
+          log('Warning: Chunk load failed', 'error')
+        }
+
+        // Test 3: Try to load with OpenSeadragon using a simple DZI
+        log('Attempting to initialize OpenSeadragon...', 'info')
+        try {
+          // Simple test with a known working DZI
+          const viewer = OpenSeadragon({
+            id: 'viewer',
+            prefixUrl: 'https://openseadragon.github.io/openseadragon/images/',
+            tileSources: {
+              Image: {
+                xmlns: 'http://schemas.microsoft.com/deepzoom/2008',
+                Url: 'https://openseadragon.github.io/example-images/highsmith/highsmith_',
+                Format: 'jpg',
+                Overlap: '0',
+                TileSize: '256',
+                Size: {
+                  Height: '9221',
+                  Width: '7026',
+                },
+              },
+            },
+          })
+
+          viewer.addHandler('open', () => {
+            log('OpenSeadragon opened successfully with test image', 'success')
+            log('OpenSeadragon is working! Now we need to fix the OME-Zarr integration.', 'info')
+          })
+
+          viewer.addHandler('open-failed', (event) => {
+            log(`OpenSeadragon open-failed: ${JSON.stringify(event)}`, 'error')
+          })
+        } catch (error) {
+          log(`OpenSeadragon error: ${error.message}`, 'error')
+        }
+      }
+    </script>
+  </body>
+</html>
