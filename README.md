@@ -19,6 +19,43 @@ This template should help get you started developing with Vue 3 in Vite.
 
 See [Vite Configuration Reference](https://vite.dev/config/).
 
+## Convert to DZI file
+documentation: https://www.libvips.org/API/current/making-image-pyramids.html. 
+
+### Install libvips
+```sh
+brew install vips
+```
+## CLI
+```sh
+vips dzsave mosaic.jpg dzi/mosaic --tile-size 256 --overlap 0 --suffix ".png"
+```
+
+## Serving files via nginx
+url: http://localhost:8080/dzi/
+
+```nginx
+server {
+
+    listen 8080;
+
+    server_name localhost;
+    location /dzi/ {
+                alias /path/to/your/dzi/folder; # example: /Users/../../dzi/
+                autoindex on;
+                add_header Access-Control-Allow-Origin * always;
+                }
+            }
+}
+```
+
+**Sample folder**
+```
+dzi/
+├── mosaic.dzi
+└── mosaic_files/
+```
+
 ## Project Setup
 
 ```sh
